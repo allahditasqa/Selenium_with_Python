@@ -185,7 +185,7 @@ Rules used in this repo:
 
 ## 7. Run on CI (GitHub Actions)
 
-`.github/workflows/tests.yml` runs on every push: `ruff check`, then the whole suite in headless Chrome with 4 workers and one retry, and uploads `reports/` as a build artifact.
+`.github/workflows/tests.yml` runs on every push: `ruff check`, then the suite without the `external` tests (third-party sites can block cloud runners) in headless Chrome with 4 workers and one retry, and uploads `reports/` as a build artifact.
 
 ## 8. Run on Selenium Grid / Docker
 
