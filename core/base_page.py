@@ -172,6 +172,19 @@ class BasePage:
                 self.driver.close()
         self.driver.switch_to.window(keep_handle)
 
+    def open_url(self, url: str, ready: Locator, attempts: int = 3) -> None:
+        """Open a URL and wait for a 'page is ready' element. Reloads and retries when a shared public
+        site is slow or throttles us (common on cloud CI runners)."""
+        for attempt in range(1, attempts + 1):
+            self.driver.get(url)
+            try:
+                self.visible(ready)
+                return
+            except TimeoutException:
+                self.log.warning("attempt %s/%s: %s not ready at %s", attempt, attempts, ready, url)
+                if attempt == attempts:
+                    raise
+
     # ------------------------------------------------------------------ page level
     def title(self) -> str:
         return self.driver.title

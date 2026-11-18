@@ -27,8 +27,7 @@ class HiddenElementsPage(BasePage):
         self.settings = settings
 
     def open(self) -> HiddenElementsPage:
-        self.driver.get(self.settings.base_url + self.PATH)
-        self.visible(self.TOGGLE_INPUT)
+        self.open_url(self.settings.base_url + self.PATH, self.TOGGLE_INPUT)
         return self
 
     def status(self) -> str:

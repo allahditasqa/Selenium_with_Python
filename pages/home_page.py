@@ -62,8 +62,7 @@ class HomePage(BasePage):
 
     def open(self) -> HomePage:
         self.log.info("open %s", self.settings.base_url)
-        self.driver.get(self.settings.base_url + "/")
-        self.visible(self.HEADING)
+        self.open_url(self.settings.base_url + "/", self.HEADING)
         return self
 
     def heading_text(self) -> str:

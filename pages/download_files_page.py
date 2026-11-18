@@ -23,8 +23,7 @@ class DownloadFilesPage(BasePage):
         self.settings = settings
 
     def open(self) -> DownloadFilesPage:
-        self.driver.get(self.settings.base_url + self.PATH)
-        self.visible(self.TEXT_AREA)
+        self.open_url(self.settings.base_url + self.PATH, self.TEXT_AREA)
         return self
 
     def download_text_file(self, content: str) -> None:
