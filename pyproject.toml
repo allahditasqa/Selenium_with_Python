@@ -1,0 +1,12 @@
+[project]
+name = "selenium-python-framework"
+version = "1.0.0"
+description = "Selenium + Python + Pytest framework (Page Object Model, component based) for testautomationpractice.blogspot.com"
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

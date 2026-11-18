@@ -1,0 +1,18 @@
+{
+  "valid_user": {
+    "name": "Allah Ditta",
+    "email": "allah.ditta@example.com",
+    "phone": "0300123456",
+    "address": "Lahore, Pakistan",
+    "gender": "male",
+    "days": ["monday", "wednesday", "friday"],
+    "country": "India",
+    "colors": ["Red", "Green"],
+    "animals": ["Cat", "Zebra"]
+  },
+  "expected_countries": [
+    "United States", "Canada", "United Kingdom", "Germany", "France",
+    "Australia", "Japan", "China", "Brazil", "India"
+  ],
+  "weekdays": ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+}

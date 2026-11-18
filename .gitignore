@@ -1,0 +1,14 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.env
+reports/
+logs/
+screenshots/
+downloads/
+*.egg-info/
+.idea/
+.vscode/
