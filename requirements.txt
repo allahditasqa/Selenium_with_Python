@@ -1,6 +1,5 @@
 selenium>=4.20,<5
 pytest>=8.0
-pytest-html>=4.1
 pytest-xdist>=3.5
 pytest-rerunfailures>=14.0
 python-dotenv>=1.0

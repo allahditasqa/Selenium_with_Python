@@ -3,12 +3,11 @@
 * `cfg`          - effective settings (env + command line)
 * `driver`       - a fresh browser per test, closed afterwards
 * `home`         - HomePage object already opened
-* screenshot of the failing page is attached to the HTML report
+* module-wise HTML reports with screenshots are produced by reporting/plugin.py
 """
 
 from __future__ import annotations
 
-import base64
 import dataclasses
 from collections.abc import Iterator
 from pathlib import Path
@@ -21,6 +20,8 @@ from core.driver_factory import DriverFactory
 from pages.download_files_page import DownloadFilesPage
 from pages.hidden_elements_page import HiddenElementsPage
 from pages.home_page import HomePage
+
+pytest_plugins = ["reporting.plugin"]  # module-wise HTML reports with screenshots
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -74,30 +75,3 @@ def hidden_page(driver: WebDriver, cfg: Settings) -> HiddenElementsPage:
 @pytest.fixture
 def download_page(driver: WebDriver, cfg: Settings) -> DownloadFilesPage:
     return DownloadFilesPage(driver, cfg).open()
-
-
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
-    """On failure: save a screenshot and embed it in the pytest-html report."""
-    outcome = yield
-    report = outcome.get_result()
-    if report.when != "call" or report.passed:
-        return
-    browser = getattr(item, "driver", None)
-    if browser is None:
-        return
-    try:
-        png = browser.get_screenshot_as_png()
-    except Exception:  # browser may already be gone
-        return
-    shots = settings.screenshot_dir
-    shots.mkdir(parents=True, exist_ok=True)
-    (shots / f"{item.name}.png".replace("/", "_")).write_bytes(png)
-    try:
-        import pytest_html
-
-        extras = getattr(report, "extras", [])
-        extras.append(pytest_html.extras.png(base64.b64encode(png).decode("ascii")))
-        report.extras = extras
-    except ImportError:
-        pass

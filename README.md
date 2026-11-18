@@ -16,7 +16,7 @@ It covers **every practice section** of that site (main page + "Hidden Elements 
 | Driver management | Selenium Manager downloads the right driver automatically |
 | Config | `.env` file + command-line options (`--browser`, `--headless`, `--base-url`) |
 | Test data | JSON files in `test_data/`, not hard-coded in tests |
-| Reports | Self-contained HTML report with a **screenshot on every failure** |
+| Reports | **Module-wise HTML reports** (one per test file) with every test case, its status, duration and a **screenshot**, plus CSV of test cases and an `index.html` |
 | Parallel run | `pytest -n 4` (pytest-xdist). Every test has its own browser and its own download folder |
 | Flaky test retry | `pytest --reruns 1` (pytest-rerunfailures), used in CI only |
 | Logging | Every click/type is logged to `logs/test.log` |
@@ -30,7 +30,7 @@ It covers **every practice section** of that site (main page + "Hidden Elements 
 
 ```
 Selenium_with_Python/
-├── conftest.py              # fixtures: cfg, driver, home, hidden_page, download_page + screenshot-on-failure hook
+├── conftest.py              # fixtures: cfg, driver, home, hidden_page, download_page
 ├── pytest.ini               # pytest options, markers, logging, HTML report path
 ├── pyproject.toml           # ruff (lint/format) settings
 ├── requirements.txt         # runtime dependencies
@@ -70,6 +70,7 @@ Selenium_with_Python/
 │   └── test_09_downloads.py
 │
 ├── test_data/               # JSON data + loader
+├── reporting/plugin.py      # pytest plugin that writes the module-wise HTML/CSV reports
 ├── utils/                   # file helpers (wait for download) and a link status checker
 └── .github/workflows/tests.yml
 ```
@@ -112,7 +113,21 @@ pytest -k "slider"                      # tests with "slider" in the name
 pytest -n 4 --reruns 1                  # retry a failed test once
 ```
 
-After a run open **`reports/report.html`** in a browser. Failed tests show a screenshot; screenshots are also saved in `reports/screenshots/`. Detailed step logs are in `logs/test.log`.
+### Reports
+
+After every run open **`reports/index.html`**. It lists one report per module:
+
+```
+reports/
+├── index.html                                   # all modules, totals, links, previous runs
+├── data-entry-form/
+│   ├── Data Entry Form test 18-11-2026_12-30.html    # every test case + status + time + screenshot
+│   └── Data Entry Form test cases 18-11-2026_12-30.csv
+├── tables/ ...   widgets/ ...   downloads/ ...
+└── screenshots/                                 # PNG/JPG of failed tests only
+```
+
+Each module report shows total / passed / failed / skipped, then one card per test case (`TC_DATA_ENTRY_FORM_01 - ...`) with the error text (if it failed) and a screenshot - click a screenshot to enlarge it. Test case IDs are numbered per module in file order and stay the same even if you run only a subset. Detailed step logs are in `logs/test.log`.
 
 ### Test markers
 
