@@ -70,7 +70,9 @@ Selenium_with_Python/
 │   └── test_09_downloads.py
 │
 ├── test_data/               # JSON data + loader
-├── reporting/plugin.py      # pytest plugin that writes the module-wise HTML/CSV reports
+├── reporting/plugin.py      # pytest plugin that writes the module-wise HTML/CSV reports + history
+├── scripts/                 # cases_csv.py (md -> master CSV), check_traceability.py (docs <-> code)
+├── docs/                    # TEST_STRATEGY, TEST_CASE_STANDARD, test-cases/ (md + master CSV)
 ├── utils/                   # file helpers (wait for download) and a link status checker
 └── .github/workflows/tests.yml
 ```
@@ -115,21 +117,37 @@ pytest -n 4 --reruns 1                  # retry a failed test once
 
 ### Reports
 
-After every run open **`reports/index.html`**. It lists one report per module:
+Every run writes **module-wise** reports (one per test file) and adds the run to a history page. Old runs are never overwritten or deleted (a name that already exists gets a ` (2)` suffix).
 
 ```
 reports/
-├── index.html                                   # all modules, totals, links, previous runs
-├── data-entry-form/
-│   ├── Data Entry Form test 18-11-2026_12-30.html    # every test case + status + time + screenshot
-│   └── Data Entry Form test cases 18-11-2026_12-30.csv
-├── tables/ ...   widgets/ ...   downloads/ ...
-└── screenshots/                                 # PNG/JPG of failed tests only
+├── index.html                  # history of runs, newest first, links to every module report and CSV
+├── history.json                # machine readable history (append only)
+└── <module-slug>/
+    ├── <Module Name> test <DD-MM-YYYY>_<HH-mm-ss>.html         # status, time, written steps, screenshot per case
+    └── <Module Name> test cases <DD-MM-YYYY>_<HH-mm-ss>.csv    # 17 columns, same as the Selenium_with_DotNet repo
 ```
 
-The latest sample reports of a full run (152 passed) are committed in the `reports/` folder - clone the repo and open `reports/index.html` (GitHub shows HTML as text, so download or clone it).
+* **How to generate:** run `pytest -n 4` (the plugin `reporting/plugin.py` does the rest). Use `--reruns 0` (default) for an honest run.
+* **Latest committed run:** 18-11-2026 12:39:37, full suite, retries off, headless Chrome: **152 passed, 0 failed, 0 skipped** - see [`reports/index.html`](reports/index.html) and the folder [`reports/`](reports/). GitHub shows HTML as text, so clone or download to open it.
+* Each case card shows `TC_<MODULE>_<NN> - title`, priority/type, the written steps, test data and expected result (from `docs/test-cases`), the error text if it failed and a screenshot (click to enlarge).
+* Reports are generated from real runs only and are never edited by hand. Logs of every step are in `logs/test.log`.
 
-Each module report shows total / passed / failed / skipped, then one card per test case (`TC_DATA_ENTRY_FORM_01 - ...`) with the error text (if it failed) and a screenshot - click a screenshot to enlarge it. Test case IDs are numbered per module in file order and stay the same even if you run only a subset. Detailed step logs are in `logs/test.log`.
+### Test cases
+
+Every automated test has a written test case. Documents, master CSV and code are linked by the same ID and are checked automatically.
+
+| What | Where |
+|---|---|
+| Standard (format, ID rule, columns, priorities) | [`docs/TEST_CASE_STANDARD.md`](docs/TEST_CASE_STANDARD.md) |
+| Test strategy | [`docs/TEST_STRATEGY.md`](docs/TEST_STRATEGY.md) |
+| One document per module (9 files, **152 cases**, 152 automated) | [`docs/test-cases/*.md`](docs/test-cases/) |
+| Master CSV per module (same columns, for regression) | `docs/test-cases/*.csv` |
+
+* ID format `TC_<MODULE>_<NN>` (data-driven cases `TC_FORM_06.1`, `.2` ...). The ID is in the test function name (`test_tc_form_07_...`), in the first docstring line (`"""TC_FORM_07 - title."""`) and in the pytest parameter ids.
+* Only automated cases are documented and every automated case is documented.
+* `python scripts/cases_csv.py` rebuilds the master CSV from the `.md` files (`--check` only verifies).
+* `python scripts/check_traceability.py` collects the tests (no browser) and fails if code and documents differ in ID, title or test method. CI runs both before the tests.
 
 ### Test markers
 
@@ -203,7 +221,7 @@ Rules used in this repo:
 
 ## 7. Run on CI (GitHub Actions)
 
-`.github/workflows/tests.yml` runs on every push: `ruff check`, then the suite without the `external` tests (third-party sites can block cloud runners) in headless Chrome with 2 workers and up to two retries, and uploads `reports/` as a build artifact.
+`.github/workflows/tests.yml` runs on every push: `ruff check`, the master-CSV and traceability checks, then the suite without the `external` tests (third-party sites can block cloud runners) in headless Chrome with 2 workers and up to two retries, and uploads `reports/` as a build artifact.
 
 ## 8. Run on Selenium Grid / Docker
 
@@ -229,7 +247,7 @@ pytest -n 2
 
 ## 10. Verification status
 
-The full suite was run locally on Windows 11 with Python 3.14 and headless Chrome (`pytest -n 4`): **152 passed in about 10 minutes**. The Linux CI result is in the repository Actions tab.
+The full suite was run locally on Windows 11 with Python 3.14 and headless Chrome (`pytest -n 4`): **152 passed in 9 min 22 s** (retries off, `pytest -n 4`). The Linux CI result is in the repository Actions tab.
 
 ## License
 

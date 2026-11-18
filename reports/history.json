@@ -1,0 +1,99 @@
+[
+  {
+    "RunId": "20261118-123937",
+    "StartedAt": "2026-11-18T12:39:37",
+    "DurationSeconds": 561.508,
+    "Modules": [
+      {
+        "Module": "Home Page",
+        "ReportPath": "home-page/Home Page test 18-11-2026_12-39-37.html",
+        "CsvPath": "home-page/Home Page test cases 18-11-2026_12-39-37.csv",
+        "Total": 21,
+        "Passed": 21,
+        "Failed": 0,
+        "Skipped": 0,
+        "DurationSeconds": 31.888
+      },
+      {
+        "Module": "Data Entry Form",
+        "ReportPath": "data-entry-form/Data Entry Form test 18-11-2026_12-39-37.html",
+        "CsvPath": "data-entry-form/Data Entry Form test cases 18-11-2026_12-39-37.csv",
+        "Total": 36,
+        "Passed": 36,
+        "Failed": 0,
+        "Skipped": 0,
+        "DurationSeconds": 70.469
+      },
+      {
+        "Module": "Upload Files",
+        "ReportPath": "upload-files/Upload Files test 18-11-2026_12-39-37.html",
+        "CsvPath": "upload-files/Upload Files test cases 18-11-2026_12-39-37.csv",
+        "Total": 3,
+        "Passed": 3,
+        "Failed": 0,
+        "Skipped": 0,
+        "DurationSeconds": 2.155
+      },
+      {
+        "Module": "Tables",
+        "ReportPath": "tables/Tables test 18-11-2026_12-39-37.html",
+        "CsvPath": "tables/Tables test cases 18-11-2026_12-39-37.csv",
+        "Total": 23,
+        "Passed": 23,
+        "Failed": 0,
+        "Skipped": 0,
+        "DurationSeconds": 45.052
+      },
+      {
+        "Module": "Widgets",
+        "ReportPath": "widgets/Widgets test 18-11-2026_12-39-37.html",
+        "CsvPath": "widgets/Widgets test cases 18-11-2026_12-39-37.csv",
+        "Total": 22,
+        "Passed": 22,
+        "Failed": 0,
+        "Skipped": 0,
+        "DurationSeconds": 13.266
+      },
+      {
+        "Module": "Alerts And Windows",
+        "ReportPath": "alerts-and-windows/Alerts And Windows test 18-11-2026_12-39-37.html",
+        "CsvPath": "alerts-and-windows/Alerts And Windows test cases 18-11-2026_12-39-37.csv",
+        "Total": 12,
+        "Passed": 12,
+        "Failed": 0,
+        "Skipped": 0,
+        "DurationSeconds": 29.641
+      },
+      {
+        "Module": "Links, Sections And Shadow DOM",
+        "ReportPath": "links-sections-and-shadow-dom/Links, Sections And Shadow DOM test 18-11-2026_12-39-37.html",
+        "CsvPath": "links-sections-and-shadow-dom/Links, Sections And Shadow DOM test cases 18-11-2026_12-39-37.csv",
+        "Total": 26,
+        "Passed": 26,
+        "Failed": 0,
+        "Skipped": 0,
+        "DurationSeconds": 34.476
+      },
+      {
+        "Module": "Hidden Elements And AJAX",
+        "ReportPath": "hidden-elements-and-ajax/Hidden Elements And AJAX test 18-11-2026_12-39-37.html",
+        "CsvPath": "hidden-elements-and-ajax/Hidden Elements And AJAX test cases 18-11-2026_12-39-37.csv",
+        "Total": 6,
+        "Passed": 6,
+        "Failed": 0,
+        "Skipped": 0,
+        "DurationSeconds": 11.952
+      },
+      {
+        "Module": "Downloads",
+        "ReportPath": "downloads/Downloads test 18-11-2026_12-39-37.html",
+        "CsvPath": "downloads/Downloads test cases 18-11-2026_12-39-37.csv",
+        "Total": 3,
+        "Passed": 3,
+        "Failed": 0,
+        "Skipped": 0,
+        "DurationSeconds": 2.781
+      }
+    ]
+  }
+]

@@ -1,13 +1,18 @@
-"""Module-wise HTML test reports with a screenshot for every executed test case.
+"""Module-wise HTML + CSV test reports with a screenshot for every executed test case.
 
-For every test module (file) a report is written to
-    reports/<module-slug>/<Module Title> test DD-MM-YYYY_HH-MM.html
-plus a CSV of the test cases and a top-level reports/index.html that links all modules.
+Layout (same as the Selenium_with_DotNet reference repo):
 
-How it works (works with pytest-xdist too):
+    reports/index.html                                             history of all runs, newest first
+    reports/history.json                                           machine readable history (append only)
+    reports/<module-slug>/<Module> test <DD-MM-YYYY>_<HH-mm-ss>.html
+    reports/<module-slug>/<Module> test cases <DD-MM-YYYY>_<HH-mm-ss>.csv
+
+How it works (also with pytest-xdist):
   * in the worker, after each test, a screenshot is taken and attached to the report as a user property
   * in the controller process every finished test is collected
-  * at the end of the session the collected results are written as HTML / CSV
+  * at the end of the session the written test case (docs/test-cases/*.csv, found by test case ID)
+    is merged with the result and the module reports, the run CSV, history.json and index.html are written
+Old reports are never overwritten or deleted: a name that already exists gets a " (2)" suffix.
 """
 
 from __future__ import annotations
@@ -15,16 +20,20 @@ from __future__ import annotations
 import base64
 import csv
 import html
+import json
 import re
+import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 REPORT_DIR = ROOT / "reports"
+CASES_DIR = ROOT / "docs" / "test-cases"
 
-# test file stem -> title shown in the report (unknown files fall back to a prettified file name)
+# test file stem -> module name shown in the report (must be the title used in docs/test-cases/<slug>.md)
 MODULE_TITLES = {
     "test_01_home_page": "Home Page",
     "test_02_data_entry_form": "Data Entry Form",
@@ -37,7 +46,31 @@ MODULE_TITLES = {
     "test_09_downloads": "Downloads",
 }
 
+CSV_COLUMNS = [
+    "Test Case ID",
+    "Module",
+    "Test Case Title",
+    "Priority",
+    "Test Type",
+    "Preconditions",
+    "Test Steps",
+    "Test Data",
+    "Expected Result",
+    "Actual Result",
+    "Execution Status",
+    "Execution Type",
+    "Automation Method",
+    "Duration (s)",
+    "Executed On",
+    "Browser",
+    "Environment (URL)",
+]
+
+_NAME_ID = re.compile(r"^test_tc_([a-z0-9]+)_(\d+)_")
+_DOC_ID = re.compile(r"^(TC_[A-Z0-9]+_\d+) - (.+)$")
+
 _records: list[dict] = []
+_run = {"start": None, "clock": None}
 
 
 # ----------------------------------------------------------------------------- helpers
@@ -59,6 +92,19 @@ def _is_worker(config: pytest.Config) -> bool:
     return hasattr(config, "workerinput")
 
 
+def _id_sort_key(case_id: str) -> tuple:
+    return tuple(int(n) for n in re.findall(r"\d+", case_id))
+
+
+def _unique_path(folder: Path, base: str, ext: str) -> Path:
+    path = folder / f"{base}{ext}"
+    counter = 2
+    while path.exists():
+        path = folder / f"{base} ({counter}){ext}"
+        counter += 1
+    return path
+
+
 def _take_screenshot(browser) -> tuple[bytes, str] | None:
     """JPEG through the Chrome DevTools protocol (about 5x smaller than PNG); PNG for other browsers."""
     try:
@@ -72,17 +118,33 @@ def _take_screenshot(browser) -> tuple[bytes, str] | None:
         return None
 
 
+def _written_cases() -> dict[str, dict[str, str]]:
+    """The written test cases (master CSV files in docs/test-cases), by test case ID."""
+    cases: dict[str, dict[str, str]] = {}
+    for path in sorted(CASES_DIR.glob("*.csv")):
+        with path.open(encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                cases[row["ID"]] = row
+    return cases
+
+
+def _identify(item: pytest.Item) -> tuple[str, str]:
+    """(test case ID, title) of a test: the id and title come from the docstring `TC_X_NN - title`."""
+    function = getattr(item, "function", None)
+    doc = (function.__doc__ or "").strip().splitlines()[0] if function and function.__doc__ else ""
+    match = _DOC_ID.match(doc)
+    callspec = getattr(item, "callspec", None)
+    if match:
+        base, title = match.groups()
+        if callspec is not None:
+            return callspec.id, title.format(**callspec.params)
+        return base, title
+    name = _NAME_ID.match(getattr(item, "originalname", item.name))
+    case_id = f"TC_{name.group(1).upper()}_{name.group(2)}" if name else item.name
+    return case_id, doc or _prettify(getattr(item, "originalname", item.name))
+
+
 # ----------------------------------------------------------------------------- worker side
-@pytest.hookimpl(tryfirst=True)
-def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Give every test a stable number inside its module (before -m / -k deselection)."""
-    counters: dict[str, int] = {}
-    for item in items:
-        stem = item.path.stem
-        counters[stem] = counters.get(stem, 0) + 1
-        item.user_properties.append(("tc_no", str(counters[stem])))
-
-
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     outcome = yield
@@ -92,19 +154,16 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     if not (finished_test or broken_setup):
         return
 
-    function = getattr(item, "function", None)
-    doc = (function.__doc__ or "").strip().splitlines()[0] if function and function.__doc__ else ""
-    title = doc or _prettify(item.originalname if hasattr(item, "originalname") else item.name)
-    callspec = getattr(item, "callspec", None)
-    if callspec is not None and not doc:
-        title = f"{title} [{callspec.id}]"
-    group = _prettify(item.cls.__name__.removeprefix("Test")) if item.cls else ""
+    case_id, title = _identify(item)
+    group = item.cls.__name__ if item.cls else ""
+    method = ((group + "::") if group else "") + getattr(item, "originalname", item.name)
     report.user_properties.extend(
         [
             ("module", item.path.stem),
-            ("group", group),
+            ("tc_id", case_id),
             ("title", title),
-            ("file", item.path.name),
+            ("file", item.path.relative_to(ROOT).as_posix()),
+            ("method", method),
         ]
     )
 
@@ -125,6 +184,11 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
 
 
 # ----------------------------------------------------------------------------- controller side
+def pytest_sessionstart(session: pytest.Session) -> None:
+    _run["start"] = datetime.now()
+    _run["clock"] = time.perf_counter()
+
+
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     if report.outcome == "rerun":
         return
@@ -143,13 +207,14 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
         error = "\n".join(lines[:15]) or text[-1500:]
     elif report.skipped and isinstance(report.longrepr, tuple):
         error = str(report.longrepr[2])
+    leaf = report.nodeid.split("::")[-1]
     _records.append(
         {
             "stem": stem,
-            "tc_no": int(props.get("tc_no", 0)),
-            "group": props.get("group", ""),
-            "title": props.get("title") or _prettify(report.nodeid.split("::")[-1]),
+            "tc_id": props.get("tc_id", leaf),
+            "title": props.get("title") or _prettify(leaf),
             "file": props.get("file", stem + ".py"),
+            "method": props.get("method", leaf),
             "outcome": report.outcome,
             "duration": report.duration,
             "error": error,
@@ -162,27 +227,57 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 def pytest_sessionfinish(session: pytest.Session) -> None:
     if _is_worker(session.config) or not _records:
         return
-    now = datetime.now()
-    stamp = now.strftime("%d-%m-%Y_%H-%M")
+    config = session.config
+    started: datetime = _run["start"] or datetime.now()
+    run_seconds = time.perf_counter() - _run["clock"] if _run["clock"] else 0.0
+    stamp = started.strftime("%d-%m-%Y_%H-%M-%S")
+    try:
+        cfg = config.pluginmanager.get_plugin("conftest")
+        settings = cfg.settings if cfg is not None else None
+    except Exception:
+        settings = None
+    browser = (config.getoption("--browser", default=None) or getattr(settings, "browser", "chrome")).lower()
+    base_url = (config.getoption("--base-url", default=None) or getattr(settings, "base_url", "")).rstrip("/")
+    written = _written_cases()
+
     by_module: dict[str, list[dict]] = {}
     for record in _records:
         by_module.setdefault(record["stem"], []).append(record)
 
-    written: list[dict] = []
+    modules: list[dict] = []
     for stem, records in sorted(by_module.items()):
-        records.sort(key=lambda r: r["tc_no"])
+        records.sort(key=lambda r: _id_sort_key(r["tc_id"]))
         title = _module_title(stem)
         folder = REPORT_DIR / _slug(title)
         folder.mkdir(parents=True, exist_ok=True)
-        name = f"{title} test {stamp}"
+        html_path = _unique_path(folder, f"{title} test {stamp}", ".html")
+        csv_path = _unique_path(folder, f"{title} test cases {stamp}", ".csv")
         for r in records:
-            r["tc_id"] = f"TC_{_slug(title).upper().replace('-', '_')}_{r['tc_no']:02d}"
-        (folder / f"{name}.html").write_text(_module_html(title, records, now), encoding="utf-8")
-        _write_csv(folder / f"{title} test cases {stamp}.csv", records)
-        written.append({"title": title, "folder": folder.name, "file": f"{name}.html", "records": records})
+            r["spec"] = written.get(r["tc_id"])
+        html_path.write_text(_module_html(title, records, started), encoding="utf-8")
+        _write_csv(csv_path, title, records, started, browser, base_url)
+        counts = _counts(records)
+        modules.append(
+            {
+                "Module": title,
+                "ReportPath": f"{folder.name}/{html_path.name}",
+                "CsvPath": f"{folder.name}/{csv_path.name}",
+                "Total": counts["total"],
+                "Passed": counts["passed"],
+                "Failed": counts["failed"],
+                "Skipped": counts["skipped"],
+                "DurationSeconds": round(sum(r["duration"] for r in records), 3),
+            }
+        )
 
-    (REPORT_DIR / "index.html").write_text(_index_html(written, now), encoding="utf-8")
-    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    run = {
+        "RunId": started.strftime("%Y%m%d-%H%M%S"),
+        "StartedAt": started.isoformat(timespec="seconds"),
+        "DurationSeconds": round(run_seconds, 3),
+        "Modules": modules,
+    }
+    _append_history_and_index(run)
+    reporter = config.pluginmanager.get_plugin("terminalreporter")
     if reporter:
         reporter.write_line(f"HTML reports: {REPORT_DIR / 'index.html'}")
 
@@ -215,6 +310,15 @@ table{width:100%;border-collapse:collapse;background:var(--card);border:1px soli
 """
 
 
+def _page(title: str, body: str) -> str:
+    return (
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>{html.escape(title)}</title><style>{_CSS}</style></head>"
+        f"<body><main>{body}</main></body></html>"
+    )
+
+
 def _summary_html(c: dict[str, int]) -> str:
     return (
         '<div class="sum">'
@@ -226,7 +330,20 @@ def _summary_html(c: dict[str, int]) -> str:
     )
 
 
-def _module_html(title: str, records: list[dict], now: datetime) -> str:
+def _details_html(spec: dict[str, str]) -> str:
+    steps = "<br>".join(html.escape(part) for part in re.split(r"(?<=\.) (?=\d+\. )", spec["Steps"]))
+    return (
+        f'<div class="meta">{html.escape(spec["Priority"])} &middot; {html.escape(spec["Type"])}</div>'
+        '<details><summary class="meta">Test case details</summary><table>'
+        f"<tr><th>Preconditions</th><td>{html.escape(spec['Preconditions'])}</td></tr>"
+        f"<tr><th>Test steps</th><td>{steps}</td></tr>"
+        f"<tr><th>Test data</th><td>{html.escape(spec['Test Data'])}</td></tr>"
+        f"<tr><th>Expected result</th><td>{html.escape(spec['Expected Result'])}</td></tr>"
+        "</table></details>"
+    )
+
+
+def _module_html(title: str, records: list[dict], started: datetime) -> str:
     c = _counts(records)
     overall = "failed" if c["failed"] else "passed"
     total_time = sum(r["duration"] for r in records)
@@ -240,77 +357,111 @@ def _module_html(title: str, records: list[dict], now: datetime) -> str:
             else ""
         )
         error = f"<pre>{html.escape(r['error'])}</pre>" if r["error"] else ""
-        group = f" &middot; {html.escape(r['group'])}" if r["group"] else ""
+        details = _details_html(r["spec"]) if r["spec"] else ""
         cards.append(
-            f'<section class="card {r["outcome"]}">\n'
-            f'  <div class="head"><span class="badge {r["outcome"]}">{r["outcome"]}</span>'
-            f"<b>{r['tc_id']} - {html.escape(r['title'])}</b>\n"
-            f'  <span class="meta">{html.escape(r["file"])}{group} &middot; {r["duration"]:.1f}s</span></div>\n'
-            f"  {error}\n  {shot}\n</section>"
+            f'<section class="card {r["outcome"]}"><div class="head">'
+            f'<span class="badge {r["outcome"]}">{r["outcome"]}</span>'
+            f"<b>{html.escape(r['tc_id'])} - {html.escape(r['title'])}</b>"
+            f'<span class="meta">{html.escape(r["method"])} &middot; {r["duration"]:.1f}s</span></div>'
+            f"{details}{error}{shot}</section>"
         )
-    return (
-        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        f"<title>{html.escape(title)} Test Report {now:%d-%m-%Y %H:%M}</title><style>{_CSS}</style></head>"
-        '<body><main>\n<p class="meta"><a href="../index.html">&larr; All reports</a></p>\n'
-        f"<h1>{html.escape(title)}</h1>\n"
-        f'<div class="meta">Run: {now:%d-%m-%Y %H:%M} &middot; total test time {total_time:.0f}s '
-        f"&middot; overall: {overall} &middot; click a screenshot to enlarge</div>\n"
-        f"{_summary_html(c)}\n" + "\n".join(cards) + "\n</main></body></html>"
+    body = (
+        '<p class="meta"><a href="../index.html">&larr; All reports</a></p>'
+        f"<h1>{html.escape(title)}</h1>"
+        f'<div class="meta">Run: {started:%d-%m-%Y %H:%M} &middot; duration {total_time:.0f}s '
+        f"&middot; overall: {overall} &middot; click a screenshot to enlarge</div>"
+        f"{_summary_html(c)}" + "".join(cards)
     )
+    return _page(f"{title} Test Report {started:%d-%m-%Y %H:%M}", body)
 
 
-def _write_csv(path: Path, records: list[dict]) -> None:
+def _write_csv(
+    path: Path, title: str, records: list[dict], started: datetime, browser: str, base_url: str
+) -> None:
     with path.open("w", newline="", encoding="utf-8-sig") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(["Test case ID", "Title", "Group", "File", "Status", "Duration (s)", "Error"])
+        writer = csv.writer(handle, quoting=csv.QUOTE_ALL)
+        writer.writerow(CSV_COLUMNS)
         for r in records:
+            spec = r["spec"] or {}
+            status = {"passed": "Pass", "failed": "Fail"}.get(r["outcome"], "Skipped")
+            if r["outcome"] == "passed":
+                actual = "As expected (all assertions passed)"
+            elif r["outcome"] == "failed":
+                actual = r["error"]
+            else:
+                actual = "Test was not executed: " + r["error"]
             writer.writerow(
                 [
                     r["tc_id"],
+                    title,
                     r["title"],
-                    r["group"],
-                    r["file"],
-                    r["outcome"],
+                    spec.get("Priority", ""),
+                    spec.get("Type", ""),
+                    spec.get("Preconditions", ""),
+                    spec.get("Steps", ""),
+                    spec.get("Test Data", ""),
+                    spec.get("Expected Result", ""),
+                    " ".join(actual.split()),
+                    status,
+                    "Automated",
+                    f"{r['file']}::{r['method']}",
                     f"{r['duration']:.1f}",
-                    r["error"],
+                    started.strftime("%d-%m-%Y %H:%M:%S"),
+                    browser,
+                    base_url,
                 ]
             )
 
 
-def _index_html(modules: list[dict], now: datetime) -> str:
-    all_records = [r for m in modules for r in m["records"]]
-    rows = []
-    for m in modules:
-        c = _counts(m["records"])
-        link = f"{m['folder']}/{m['file']}"
-        rows.append(
-            f'<tr><td><a href="{html.escape(link)}">{html.escape(m["title"])}</a></td>'
-            f"<td>{c['total']}</td>"
-            f'<td class="passed-t">{c["passed"]}</td>'
-            f'<td class="failed-t">{c["failed"]}</td>'
-            f'<td class="skipped-t">{c["skipped"]}</td></tr>'
+def _append_history_and_index(run: dict) -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    history_file = REPORT_DIR / "history.json"
+    history: list[dict] = []
+    if history_file.exists():
+        try:
+            history = json.loads(history_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:  # keep the broken file as a backup instead of losing anything
+            history_file.replace(_unique_path(REPORT_DIR, "history.corrupt", ".json"))
+    history.append(run)
+    temp = history_file.with_suffix(".json.tmp")
+    temp.write_text(json.dumps(history, indent=2), encoding="utf-8")
+    temp.replace(history_file)  # history is append only: all old runs are kept
+    (REPORT_DIR / "index.html").write_text(_index_html(history), encoding="utf-8")
+
+
+def _index_html(history: list[dict]) -> str:
+    parts = [
+        "<h1>Selenium Python - Test Reports</h1>",
+        '<div class="meta">History: newest run on top. Under each date-time you see the module-wise reports. '
+        "Old runs are never overwritten or deleted.</div>",
+    ]
+    for run in sorted(history, key=lambda r: r["StartedAt"], reverse=True):
+        modules = run["Modules"]
+        total = sum(m["Total"] for m in modules)
+        passed = sum(m["Passed"] for m in modules)
+        failed = sum(m["Failed"] for m in modules)
+        skipped = sum(m["Skipped"] for m in modules)
+        when = datetime.fromisoformat(run["StartedAt"])
+        parts.append(
+            f"<h2>{when:%d-%m-%Y}  &bull;  {when:%H:%M:%S} "
+            f'<span class="meta">&nbsp;total {total} &middot; <span class="passed-t">{passed} pass</span> &middot; '
+            f'<span class="{"failed-t" if failed else ""}">{failed} fail</span> &middot; '
+            f'<span class="skipped-t">{skipped} skip</span> &middot; {run["DurationSeconds"]:.0f}s</span></h2>'
         )
-    history = []
-    for folder in sorted(p for p in REPORT_DIR.iterdir() if p.is_dir() and p.name != "screenshots"):
-        files = sorted(folder.glob("*.html"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if files:
-            links = " &middot; ".join(
-                f'<a href="{folder.name}/{html.escape(f.name)}">{html.escape(f.stem.split(" test ")[-1])}</a>'
-                for f in files[:10]
+        parts.append(
+            "<table><thead><tr><th>Module</th><th>Total</th><th>Pass</th><th>Fail</th><th>Skip</th>"
+            "<th>Result</th><th>Report</th><th>Test cases</th></tr></thead><tbody>"
+        )
+        for m in sorted(modules, key=lambda m: m["Module"]):
+            ok = m["Failed"] == 0
+            parts.append(
+                f"<tr><td>{html.escape(m['Module'])}</td><td>{m['Total']}</td>"
+                f'<td class="passed-t">{m["Passed"]}</td>'
+                f'<td class="{"failed-t" if m["Failed"] else ""}">{m["Failed"]}</td>'
+                f'<td class="skipped-t">{m["Skipped"]}</td>'
+                f'<td class="{"passed-t" if ok else "failed-t"}">{"Passed" if ok else "Failed"}</td>'
+                f'<td><a href="{quote(m["ReportPath"])}">HTML</a></td>'
+                f'<td><a href="{quote(m["CsvPath"])}">CSV</a></td></tr>'
             )
-            history.append(f"<tr><td>{html.escape(folder.name)}</td><td>{links}</td></tr>")
-    return (
-        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        f"<title>Test Reports {now:%d-%m-%Y %H:%M}</title><style>{_CSS}</style></head><body><main>"
-        "<h1>Test reports</h1>"
-        f'<div class="meta">Latest run: {now:%d-%m-%Y %H:%M} &middot; one report per module</div>'
-        f"{_summary_html(_counts(all_records))}"
-        "<h2>Modules (latest run)</h2>"
-        "<table><tr><th>Module</th><th>Total</th><th>Passed</th><th>Failed</th><th>Skipped</th></tr>"
-        + "".join(rows)
-        + "</table><h2>Previous runs</h2><table><tr><th>Module folder</th><th>Reports (newest first)</th></tr>"
-        + "".join(history)
-        + "</table></main></body></html>"
-    )
+        parts.append("</tbody></table>")
+    return _page("Selenium Python - Test Reports", "".join(parts))

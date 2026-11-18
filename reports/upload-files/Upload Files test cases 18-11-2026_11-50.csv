@@ -1,4 +1,0 @@
-﻿Test case ID,Title,Group,File,Status,Duration (s),Error
-TC_UPLOAD_FILES_01,Upload single file,Upload,test_03_upload_files.py,passed,1.0,
-TC_UPLOAD_FILES_02,Upload multiple files,Upload,test_03_upload_files.py,passed,0.2,
-TC_UPLOAD_FILES_03,Upload without selecting file shows message,Upload,test_03_upload_files.py,passed,0.8,

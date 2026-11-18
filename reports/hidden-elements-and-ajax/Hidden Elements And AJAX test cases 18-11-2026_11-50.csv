@@ -1,7 +1,0 @@
-﻿Test case ID,Title,Group,File,Status,Duration (s),Error
-TC_HIDDEN_ELEMENTS_AND_AJAX_01,Initial state,Hidden Elements,test_08_hidden_elements_ajax.py,passed,0.1,
-TC_HIDDEN_ELEMENTS_AND_AJAX_02,Toggle input box 2,Hidden Elements,test_08_hidden_elements_ajax.py,passed,0.8,
-TC_HIDDEN_ELEMENTS_AND_AJAX_03,Toggle checkbox 2,Hidden Elements,test_08_hidden_elements_ajax.py,passed,2.3,
-TC_HIDDEN_ELEMENTS_AND_AJAX_04,Revealed input accepts text,Hidden Elements,test_08_hidden_elements_ajax.py,passed,0.9,
-TC_HIDDEN_ELEMENTS_AND_AJAX_05,Ajax content appears after delay,Ajax,test_08_hidden_elements_ajax.py,passed,3.4,
-TC_HIDDEN_ELEMENTS_AND_AJAX_06,Status label after ajax,Ajax,test_08_hidden_elements_ajax.py,passed,3.7,
