@@ -5,10 +5,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .env
-reports/
+reports/screenshots/
 logs/
-screenshots/
-downloads/
+/screenshots/
+/downloads/
 *.egg-info/
 .idea/
 .vscode/

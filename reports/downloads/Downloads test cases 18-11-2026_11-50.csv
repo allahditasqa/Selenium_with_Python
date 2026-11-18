@@ -1,0 +1,4 @@
+﻿Test case ID,Title,Group,File,Status,Duration (s),Error
+TC_DOWNLOADS_01,Download text file,Downloads,test_09_downloads.py,passed,1.3,
+TC_DOWNLOADS_02,Download pdf file,Downloads,test_09_downloads.py,passed,3.0,
+TC_DOWNLOADS_03,Download link names,Downloads,test_09_downloads.py,passed,1.2,

@@ -127,6 +127,8 @@ reports/
 └── screenshots/                                 # PNG/JPG of failed tests only
 ```
 
+The latest sample reports of a full run (152 passed) are committed in the `reports/` folder - clone the repo and open `reports/index.html` (GitHub shows HTML as text, so download or clone it).
+
 Each module report shows total / passed / failed / skipped, then one card per test case (`TC_DATA_ENTRY_FORM_01 - ...`) with the error text (if it failed) and a screenshot - click a screenshot to enlarge it. Test case IDs are numbered per module in file order and stay the same even if you run only a subset. Detailed step logs are in `logs/test.log`.
 
 ### Test markers
