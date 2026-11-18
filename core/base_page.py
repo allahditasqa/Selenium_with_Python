@@ -12,6 +12,7 @@ from typing import Any
 from selenium.common.exceptions import (
     ElementClickInterceptedException,
     StaleElementReferenceException,
+    TimeoutException,
 )
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.keys import Keys
